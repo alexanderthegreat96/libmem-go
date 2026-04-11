@@ -50,23 +50,30 @@ func main() {
 
 	// Decide install location
 	installDir := resolveInstallDir(local)
+	libDir := filepath.Join(installDir, "lib")
+	incDir := filepath.Join(installDir, "include", "libmem")
 
-	tmpDir := filepath.Join(os.TempDir(), "libmem-build")
+	// Check write permissions BEFORE doing the expensive clone+build
+	step("Install target: %s", installDir)
+	checkWritable(installDir)
+
+	// Use a proper temp directory for the build
+	tmpDir, err := os.MkdirTemp("", "libmem-build-*")
+	check(err, "creating temp directory")
+	defer os.RemoveAll(tmpDir)
 	buildDir := filepath.Join(tmpDir, "build")
-
-	// Clean previous build
-	os.RemoveAll(tmpDir)
 
 	// Clone
 	step("Cloning libmem (%s)...", version)
 	runCmd("git", "clone", "--depth", "1", "--recurse-submodules",
-		"--branch", version, repoURL, tmpDir)
+		"--branch", version, repoURL, tmpDir+"/src")
 
 	// Configure
 	step("Configuring build...")
 	check(os.MkdirAll(buildDir, 0755), "creating build directory")
 
-	cmakeArgs := []string{"-S", tmpDir, "-B", buildDir, "-DLIBMEM_BUILD_TESTS=OFF"}
+	srcDir := filepath.Join(tmpDir, "src")
+	cmakeArgs := []string{"-S", srcDir, "-B", buildDir, "-DLIBMEM_BUILD_TESTS=OFF"}
 	if runtime.GOOS == "windows" {
 		cmakeArgs = append(cmakeArgs, "-G", "MinGW Makefiles")
 	}
@@ -79,24 +86,14 @@ func main() {
 
 	// Copy artifacts
 	step("Installing to %s...", installDir)
-	libDir := filepath.Join(installDir, "lib")
-	incDir := filepath.Join(installDir, "include", "libmem")
-
-	if err := os.MkdirAll(libDir, 0755); err != nil {
-		if os.IsPermission(err) && runtime.GOOS != "windows" {
-			fatal("permission denied writing to %s\n  Try: sudo %s", installDir, strings.Join(os.Args, " "))
-		}
-		check(err, "creating lib directory")
-	}
+	check(os.MkdirAll(libDir, 0755), "creating lib directory")
 	check(os.MkdirAll(incDir, 0755), "creating include directory")
 
 	if !installLibrary(buildDir, libDir) {
 		fatal("could not find built library in %s", buildDir)
 	}
-	installHeaders(filepath.Join(tmpDir, "include", "libmem"), incDir)
-
-	// Cleanup
-	os.RemoveAll(tmpDir)
+	installHeaders(filepath.Join(srcDir, "include", "libmem"), incDir)
+	// tmpDir is cleaned up by defer
 
 	fmt.Println()
 	step("Done! libmem installed to %s", installDir)
@@ -145,6 +142,25 @@ func resolveInstallDir(local bool) string {
 	default:
 		return "/usr/local"
 	}
+}
+
+// checkWritable verifies we can write to the install directory before doing
+// the expensive clone+build. Creates a test file and removes it.
+func checkWritable(dir string) {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		if os.IsPermission(err) && runtime.GOOS != "windows" {
+			fatal("permission denied: cannot write to %s\n  Run with sudo: sudo env \"PATH=$PATH\" %s", dir, strings.Join(os.Args, " "))
+		}
+		check(err, "accessing install directory")
+	}
+	testFile := filepath.Join(dir, ".libmem-write-test")
+	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
+		if os.IsPermission(err) && runtime.GOOS != "windows" {
+			fatal("permission denied: cannot write to %s\n  Run with sudo: sudo env \"PATH=$PATH\" %s", dir, strings.Join(os.Args, " "))
+		}
+		check(err, "checking write access")
+	}
+	os.Remove(testFile)
 }
 
 // checkPrereqs verifies that required tools are available.
