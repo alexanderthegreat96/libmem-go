@@ -6,7 +6,7 @@ package libmem
 import "C"
 
 import (
-	"errors"
+	"fmt"
 	"unsafe"
 )
 
@@ -18,7 +18,10 @@ func ReadMemory(source uintptr, size uint) ([]byte, error) {
 	buf := make([]byte, size)
 	n := C.LM_ReadMemory(C.lm_address_t(source), (*C.lm_byte_t)(unsafe.Pointer(&buf[0])), C.lm_size_t(size))
 	if uint(n) != size {
-		return buf[:n], errors.New("libmem: incomplete read")
+		if n == 0 {
+			return nil, fmt.Errorf("libmem: read failed at 0x%x (read 0/%d bytes, check permissions)", source, size)
+		}
+		return buf[:n], fmt.Errorf("libmem: incomplete read at 0x%x (read %d/%d bytes)", source, n, size)
 	}
 	return buf, nil
 }
@@ -32,7 +35,10 @@ func ReadMemoryEx(process *Process, source uintptr, size uint) ([]byte, error) {
 	buf := make([]byte, size)
 	n := C.LM_ReadMemoryEx(&cp, C.lm_address_t(source), (*C.lm_byte_t)(unsafe.Pointer(&buf[0])), C.lm_size_t(size))
 	if uint(n) != size {
-		return buf[:n], errors.New("libmem: incomplete read")
+		if n == 0 {
+			return nil, fmt.Errorf("libmem: read failed at 0x%x (read 0/%d bytes, check permissions or ptrace_scope)", source, size)
+		}
+		return buf[:n], fmt.Errorf("libmem: incomplete read at 0x%x (read %d/%d bytes)", source, n, size)
 	}
 	return buf, nil
 }
@@ -44,7 +50,7 @@ func WriteMemory(dest uintptr, data []byte) (uint, error) {
 	}
 	n := C.LM_WriteMemory(C.lm_address_t(dest), (*C.lm_byte_t)(unsafe.Pointer(&data[0])), C.lm_size_t(len(data)))
 	if uint(n) != uint(len(data)) {
-		return uint(n), errors.New("libmem: incomplete write")
+		return uint(n), fmt.Errorf("libmem: incomplete write (wrote %d/%d bytes)", n, len(data))
 	}
 	return uint(n), nil
 }
@@ -57,7 +63,7 @@ func WriteMemoryEx(process *Process, dest uintptr, data []byte) (uint, error) {
 	cp := processToC(process)
 	n := C.LM_WriteMemoryEx(&cp, C.lm_address_t(dest), (*C.lm_byte_t)(unsafe.Pointer(&data[0])), C.lm_size_t(len(data)))
 	if uint(n) != uint(len(data)) {
-		return uint(n), errors.New("libmem: incomplete write")
+		return uint(n), fmt.Errorf("libmem: incomplete write (wrote %d/%d bytes)", n, len(data))
 	}
 	return uint(n), nil
 }
@@ -66,7 +72,7 @@ func WriteMemoryEx(process *Process, dest uintptr, data []byte) (uint, error) {
 func SetMemory(dest uintptr, b byte, size uint) (uint, error) {
 	n := C.LM_SetMemory(C.lm_address_t(dest), C.lm_byte_t(b), C.lm_size_t(size))
 	if uint(n) != size {
-		return uint(n), errors.New("libmem: incomplete set")
+		return uint(n), fmt.Errorf("libmem: incomplete set (set %d/%d bytes)", n, size)
 	}
 	return uint(n), nil
 }
@@ -76,7 +82,7 @@ func SetMemoryEx(process *Process, dest uintptr, b byte, size uint) (uint, error
 	cp := processToC(process)
 	n := C.LM_SetMemoryEx(&cp, C.lm_address_t(dest), C.lm_byte_t(b), C.lm_size_t(size))
 	if uint(n) != size {
-		return uint(n), errors.New("libmem: incomplete set")
+		return uint(n), fmt.Errorf("libmem: incomplete set (set %d/%d bytes)", n, size)
 	}
 	return uint(n), nil
 }
@@ -87,7 +93,7 @@ func ProtMemory(address uintptr, size uint, prot Prot) (Prot, error) {
 	var oldprot C.lm_prot_t
 	ret := C.LM_ProtMemory(C.lm_address_t(address), C.lm_size_t(size), C.lm_prot_t(prot), &oldprot)
 	if ret == C.LM_FALSE {
-		return 0, errors.New("libmem: failed to change memory protection")
+		return 0, fmt.Errorf("libmem: failed to change memory protection")
 	}
 	return Prot(oldprot), nil
 }
@@ -99,7 +105,7 @@ func ProtMemoryEx(process *Process, address uintptr, size uint, prot Prot) (Prot
 	var oldprot C.lm_prot_t
 	ret := C.LM_ProtMemoryEx(&cp, C.lm_address_t(address), C.lm_size_t(size), C.lm_prot_t(prot), &oldprot)
 	if ret == C.LM_FALSE {
-		return 0, errors.New("libmem: failed to change memory protection")
+		return 0, fmt.Errorf("libmem: failed to change memory protection")
 	}
 	return Prot(oldprot), nil
 }
@@ -108,7 +114,7 @@ func ProtMemoryEx(process *Process, address uintptr, size uint, prot Prot) (Prot
 func AllocMemory(size uint, prot Prot) (uintptr, error) {
 	addr := C.LM_AllocMemory(C.lm_size_t(size), C.lm_prot_t(prot))
 	if uintptr(addr) == AddressBad {
-		return 0, errors.New("libmem: failed to allocate memory")
+		return 0, fmt.Errorf("libmem: failed to allocate memory")
 	}
 	return uintptr(addr), nil
 }
@@ -118,7 +124,7 @@ func AllocMemoryEx(process *Process, size uint, prot Prot) (uintptr, error) {
 	cp := processToC(process)
 	addr := C.LM_AllocMemoryEx(&cp, C.lm_size_t(size), C.lm_prot_t(prot))
 	if uintptr(addr) == AddressBad {
-		return 0, errors.New("libmem: failed to allocate memory")
+		return 0, fmt.Errorf("libmem: failed to allocate memory")
 	}
 	return uintptr(addr), nil
 }
@@ -127,7 +133,7 @@ func AllocMemoryEx(process *Process, size uint, prot Prot) (uintptr, error) {
 func FreeMemory(alloc uintptr, size uint) error {
 	ret := C.LM_FreeMemory(C.lm_address_t(alloc), C.lm_size_t(size))
 	if ret == C.LM_FALSE {
-		return errors.New("libmem: failed to free memory")
+		return fmt.Errorf("libmem: failed to free memory")
 	}
 	return nil
 }
@@ -137,7 +143,7 @@ func FreeMemoryEx(process *Process, alloc uintptr, size uint) error {
 	cp := processToC(process)
 	ret := C.LM_FreeMemoryEx(&cp, C.lm_address_t(alloc), C.lm_size_t(size))
 	if ret == C.LM_FALSE {
-		return errors.New("libmem: failed to free memory")
+		return fmt.Errorf("libmem: failed to free memory")
 	}
 	return nil
 }
@@ -153,7 +159,7 @@ func DeepPointer(base uintptr, offsets []uintptr) (uintptr, error) {
 	}
 	addr := C.LM_DeepPointer(C.lm_address_t(base), &coffsets[0], C.size_t(len(coffsets)))
 	if uintptr(addr) == AddressBad {
-		return 0, errors.New("libmem: failed to resolve deep pointer")
+		return 0, fmt.Errorf("libmem: failed to resolve deep pointer")
 	}
 	return uintptr(addr), nil
 }
@@ -170,7 +176,7 @@ func DeepPointerEx(process *Process, base uintptr, offsets []uintptr) (uintptr, 
 	}
 	addr := C.LM_DeepPointerEx(&cp, C.lm_address_t(base), &coffsets[0], C.lm_size_t(len(coffsets)))
 	if uintptr(addr) == AddressBad {
-		return 0, errors.New("libmem: failed to resolve deep pointer")
+		return 0, fmt.Errorf("libmem: failed to resolve deep pointer")
 	}
 	return uintptr(addr), nil
 }
