@@ -23,25 +23,41 @@ Supports **Linux**, **macOS**, **FreeBSD**, and **Windows**.
 
 ## Installation
 
+The Go bindings require the libmem C library to be installed. A setup tool is included to automate this.
+
+### Quick start (for users)
+
 ```bash
+# 1. Install the setup tool
+go install github.com/alexanderthegreat96/libmem-go/cmd/setup@latest
+
+# 2. Build and install libmem system-wide (Linux/macOS)
+sudo setup
+
+# 3. Use in your project
 go get github.com/alexanderthegreat96/libmem-go
 ```
 
-Then build the C library locally:
-
+On Windows (no sudo needed):
 ```bash
-go run ./cmd/setup
+setup
 ```
 
-This clones, builds, and installs libmem into `libmem/deps/`. No system-wide installation required.
-
-To pin a specific version:
-
+To pin a specific libmem version:
 ```bash
-go run ./cmd/setup v4.5.0
+sudo setup v4.5.0
 ```
 
-A `make setup` shorthand is also available on Linux/macOS.
+### For development (cloned repo)
+
+```bash
+git clone https://github.com/alexanderthegreat96/libmem-go.git
+cd libmem-go
+go run ./cmd/setup --local   # builds libmem into libmem/deps/
+go build ./libmem
+```
+
+A `make setup` shorthand is also available on Linux/macOS (runs with `--local`).
 
 ## Usage
 

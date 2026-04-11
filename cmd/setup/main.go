@@ -1,9 +1,14 @@
 // Setup tool for libmem-go. Clones, builds, and installs the libmem C library
-// into the local deps/ directory so cgo can find it.
+// so that the Go bindings can link against it.
 //
 // Usage:
 //
-//	go run ./cmd/setup [version]
+//	# From any project (installs system-wide to /usr/local):
+//	go install github.com/alexanderthegreat96/libmem-go/cmd/setup@latest
+//	sudo setup [version]
+//
+//	# From the libmem-go repo (installs locally to libmem/deps/):
+//	go run ./cmd/setup [--local] [version]
 //
 // The version defaults to "master". Pass a git tag or branch name to pin a release.
 // Requires: git, cmake, and a C/C++ compiler (gcc/clang/mingw).
@@ -16,6 +21,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 const (
@@ -24,23 +30,31 @@ const (
 )
 
 func main() {
+	local := false
 	version := defaultVersion
-	if len(os.Args) > 1 {
-		version = os.Args[1]
+
+	for _, arg := range os.Args[1:] {
+		if arg == "--local" {
+			local = true
+		} else if arg == "--help" || arg == "-h" {
+			printUsage()
+			os.Exit(0)
+		} else {
+			version = arg
+		}
 	}
 
 	fmt.Printf("Setting up libmem (%s) for %s/%s\n\n", version, runtime.GOOS, runtime.GOARCH)
 
 	checkPrereqs()
 
-	root, err := findProjectRoot()
-	check(err, "finding project root")
+	// Decide install location
+	installDir := resolveInstallDir(local)
 
-	depsDir := filepath.Join(root, "libmem", "deps")
 	tmpDir := filepath.Join(os.TempDir(), "libmem-build")
 	buildDir := filepath.Join(tmpDir, "build")
 
-	// Clean previous state
+	// Clean previous build
 	os.RemoveAll(tmpDir)
 
 	// Clone
@@ -63,26 +77,74 @@ func main() {
 	runCmd("cmake", "--build", buildDir, "--config", "Release",
 		"-j", fmt.Sprintf("%d", runtime.NumCPU()))
 
-	// Copy artifacts to deps/
-	step("Installing to %s...", depsDir)
-	os.RemoveAll(depsDir)
-	check(os.MkdirAll(filepath.Join(depsDir, "lib"), 0755), "creating lib directory")
-	check(os.MkdirAll(filepath.Join(depsDir, "include", "libmem"), 0755), "creating include directory")
+	// Copy artifacts
+	step("Installing to %s...", installDir)
+	libDir := filepath.Join(installDir, "lib")
+	incDir := filepath.Join(installDir, "include", "libmem")
 
-	if !installLibrary(buildDir, filepath.Join(depsDir, "lib")) {
+	if err := os.MkdirAll(libDir, 0755); err != nil {
+		if os.IsPermission(err) && runtime.GOOS != "windows" {
+			fatal("permission denied writing to %s\n  Try: sudo %s", installDir, strings.Join(os.Args, " "))
+		}
+		check(err, "creating lib directory")
+	}
+	check(os.MkdirAll(incDir, 0755), "creating include directory")
+
+	if !installLibrary(buildDir, libDir) {
 		fatal("could not find built library in %s", buildDir)
 	}
-	installHeaders(
-		filepath.Join(tmpDir, "include", "libmem"),
-		filepath.Join(depsDir, "include", "libmem"),
-	)
+	installHeaders(filepath.Join(tmpDir, "include", "libmem"), incDir)
 
 	// Cleanup
 	os.RemoveAll(tmpDir)
 
 	fmt.Println()
-	step("Done! libmem installed to %s", depsDir)
-	fmt.Println("  You can now build with: go build ./libmem")
+	step("Done! libmem installed to %s", installDir)
+
+	// Post-install hints
+	if !local && runtime.GOOS == "linux" {
+		fmt.Println("  You may need to run: sudo ldconfig")
+	}
+	if local {
+		fmt.Println("  You can now build with: go build ./libmem")
+	} else {
+		fmt.Println("  You can now use: go get github.com/alexanderthegreat96/libmem-go")
+	}
+}
+
+func printUsage() {
+	fmt.Println(`Usage: setup [options] [version]
+
+Options:
+  --local    Install to libmem/deps/ in the current repo (for development)
+  --help     Show this help
+
+Arguments:
+  version    Git tag or branch to build (default: "master")
+
+Without --local, installs system-wide:
+  Linux/macOS/FreeBSD: /usr/local  (may need sudo)
+  Windows:             %LOCALAPPDATA%\libmem`)
+}
+
+// resolveInstallDir determines where to install based on flags and platform.
+func resolveInstallDir(local bool) string {
+	if local {
+		root, err := findProjectRoot()
+		check(err, "finding project root (--local requires a go.mod in a parent directory)")
+		return filepath.Join(root, "libmem", "deps")
+	}
+
+	switch runtime.GOOS {
+	case "windows":
+		appdata := os.Getenv("LOCALAPPDATA")
+		if appdata == "" {
+			fatal("LOCALAPPDATA is not set")
+		}
+		return filepath.Join(appdata, "libmem")
+	default:
+		return "/usr/local"
+	}
 }
 
 // checkPrereqs verifies that required tools are available.
