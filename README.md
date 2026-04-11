@@ -24,7 +24,7 @@ Supports **Linux**, **macOS**, **FreeBSD**, and **Windows**.
 ## Installation
 
 ```bash
-go get alexanderthegreat96/libmem-go
+go get github.com/alexanderthegreat96/libmem-go
 ```
 
 Then build the C library locally:
@@ -52,7 +52,7 @@ import (
     "fmt"
     "log"
 
-    "alexanderthegreat96/libmem-go/libmem"
+    "github.com/alexanderthegreat96/libmem-go/libmem"
 )
 
 func main() {
