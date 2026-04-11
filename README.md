@@ -28,24 +28,21 @@ The Go bindings require the libmem C library to be installed. A setup tool is in
 ### Quick start (for users)
 
 ```bash
-# 1. Install the setup tool
-go install github.com/alexanderthegreat96/libmem-go/cmd/setup@latest
+# 1. Build and install libmem system-wide (Linux/macOS)
+sudo go run github.com/alexanderthegreat96/libmem-go/cmd/setup@latest
 
-# 2. Build and install libmem system-wide (Linux/macOS)
-sudo setup
-
-# 3. Use in your project
+# 2. Use in your project
 go get github.com/alexanderthegreat96/libmem-go
 ```
 
 On Windows (no sudo needed):
 ```bash
-setup
+go run github.com/alexanderthegreat96/libmem-go/cmd/setup@latest
 ```
 
 To pin a specific libmem version:
 ```bash
-sudo setup v4.5.0
+sudo go run github.com/alexanderthegreat96/libmem-go/cmd/setup@latest v4.5.0
 ```
 
 ### For development (cloned repo)
