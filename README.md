@@ -61,6 +61,10 @@ go build ./libmem
 
 A `make setup` shorthand is also available on Linux/macOS (runs with `--local`).
 
+## Documentation
+
+For the full API reference with examples for every function, see [DOCUMENTATION.md](DOCUMENTATION.md).
+
 ## Usage
 
 ```go
