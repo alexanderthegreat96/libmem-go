@@ -127,9 +127,10 @@ Without --local, installs system-wide:
 // resolveInstallDir determines where to install based on flags and platform.
 func resolveInstallDir(local bool) string {
 	if local {
-		root, err := findProjectRoot()
-		check(err, "finding project root (--local requires a go.mod in a parent directory)")
-		return filepath.Join(root, "libmem", "deps")
+		// --local: install relative to cwd (for repo development)
+		cwd, err := os.Getwd()
+		check(err, "getting working directory")
+		return filepath.Join(cwd, "libmem", "deps")
 	}
 
 	switch runtime.GOOS {
