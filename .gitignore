@@ -1,0 +1,12 @@
+libmem/deps/
+*.exe
+*.test
+*.out
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+.claude/
