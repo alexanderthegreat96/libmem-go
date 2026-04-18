@@ -122,6 +122,9 @@ func main() {
     fmt.Printf("Pattern found at: 0x%x\n", addr)
 }
 ```
+## Usage using tether-go
+You may use tether-go scaffolding in order to start with something with very little effort.
+[tether-go](https://github.com/alexanderthegreat96/tether-go)
 
 ## API Overview
 
