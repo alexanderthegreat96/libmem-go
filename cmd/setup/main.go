@@ -74,9 +74,24 @@ func main() {
 
 	srcDir := filepath.Join(tmpDir, "src")
 	cmakeArgs := []string{"-S", srcDir, "-B", buildDir, "-DLIBMEM_BUILD_TESTS=OFF"}
-	// if runtime.GOOS == "windows" {
-	// 	cmakeArgs = append(cmakeArgs, "-G", "MinGW Makefiles")
-	// }
+	if runtime.GOOS == "windows" {
+		// 1. Check if MinGW is available in the current PATH
+		_, errMinGW := exec.LookPath("mingw32-make")
+		if errMinGW == nil {
+			fmt.Println("--> Detected MinGW, using MinGW Makefiles")
+			cmakeArgs = append(cmakeArgs, "-G", "MinGW Makefiles")
+		} else {
+			// 2. Check if NMake (Visual Studio) is available
+			_, errNMake := exec.LookPath("nmake")
+			if errNMake == nil {
+				fmt.Println("--> Detected Visual Studio, using NMake Makefiles")
+				cmakeArgs = append(cmakeArgs, "-G", "NMake Makefiles")
+			} else {
+				// 3. Last Resort: Let CMake try its default "Visual Studio Solution" generator
+				fmt.Println("--> No command-line build tools found, falling back to default generator")
+			}
+		}
+	}
 	runCmd("cmake", cmakeArgs...)
 
 	// Build
