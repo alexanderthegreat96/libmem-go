@@ -68,8 +68,8 @@ func main() {
 	runCmd("git", "clone", "--depth", "1", "--recurse-submodules",
 		"--branch", version, repoURL, tmpDir+"/src")
 
-	// Configure
 	step("Configuring build...")
+	os.RemoveAll(buildDir)
 	check(os.MkdirAll(buildDir, 0755), "creating build directory")
 
 	srcDir := filepath.Join(tmpDir, "src")
