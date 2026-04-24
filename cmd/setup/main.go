@@ -63,16 +63,17 @@ func main() {
 	defer os.RemoveAll(tmpDir)
 	buildDir := filepath.Join(tmpDir, "build")
 
+	srcDir := filepath.Join(tmpDir, "src")
+
 	// Clone
 	step("Cloning libmem (%s)...", version)
 	runCmd("git", "clone", "--depth", "1", "--recurse-submodules",
-		"--branch", version, repoURL, tmpDir+"/src")
+		"--branch", version, repoURL, srcDir)
 
 	step("Configuring build...")
 	os.RemoveAll(buildDir)
 	check(os.MkdirAll(buildDir, 0755), "creating build directory")
 
-	srcDir := filepath.Join(tmpDir, "src")
 	cmakeArgs := []string{"-S", srcDir, "-B", buildDir, "-DLIBMEM_BUILD_TESTS=OFF"}
 	if runtime.GOOS == "windows" {
 		// 1. Check if MinGW is available in the current PATH
@@ -92,11 +93,11 @@ func main() {
 			}
 		}
 	}
-	runCmd("cmake", cmakeArgs...)
+	runCmake(cmakeArgs...)
 
 	// Build
 	step("Building (this may take a few minutes)...")
-	runCmd("cmake", "--build", buildDir, "--config", "Release",
+	runCmake("--build", buildDir, "--config", "Release",
 		"-j", fmt.Sprintf("%d", runtime.NumCPU()))
 
 	// Copy artifacts
@@ -291,12 +292,37 @@ func copyFile(src, dst string) error {
 	return err
 }
 
-// runCmd runs a command with stdout/stderr connected to the terminal.
+// runCmd runs a command with stdout/stderr connected to the terminal,
+// echoing the command first so users can see exactly what is executing.
 func runCmd(name string, args ...string) {
+	fmt.Printf("  $ %s %s\n", name, strings.Join(args, " "))
 	cmd := exec.Command(name, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	check(cmd.Run(), fmt.Sprintf("running %s", name))
+}
+
+// runCmake runs cmake with a sanitized environment. We strip CMAKE_GENERATOR*
+// env vars because they can silently override the -G flag we pass explicitly
+// (e.g. a VS Developer Command Prompt or user-wide env can set
+// CMAKE_GENERATOR=NMake Makefiles, producing a "generator mismatch" error in
+// a freshly-created build directory).
+func runCmake(args ...string) {
+	fmt.Printf("  $ cmake %s\n", strings.Join(args, " "))
+	cmd := exec.Command("cmake", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	env := os.Environ()
+	filtered := env[:0]
+	for _, v := range env {
+		if strings.HasPrefix(v, "CMAKE_GENERATOR=") ||
+			strings.HasPrefix(v, "CMAKE_GENERATOR_") {
+			continue
+		}
+		filtered = append(filtered, v)
+	}
+	cmd.Env = filtered
+	check(cmd.Run(), "running cmake")
 }
 
 func step(format string, args ...any) {
