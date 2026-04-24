@@ -74,9 +74,9 @@ func main() {
 
 	srcDir := filepath.Join(tmpDir, "src")
 	cmakeArgs := []string{"-S", srcDir, "-B", buildDir, "-DLIBMEM_BUILD_TESTS=OFF"}
-	if runtime.GOOS == "windows" {
-		cmakeArgs = append(cmakeArgs, "-G", "MinGW Makefiles")
-	}
+	// if runtime.GOOS == "windows" {
+	// 	cmakeArgs = append(cmakeArgs, "-G", "MinGW Makefiles")
+	// }
 	runCmd("cmake", cmakeArgs...)
 
 	// Build
