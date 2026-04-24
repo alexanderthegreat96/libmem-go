@@ -39,11 +39,43 @@ sudo ldconfig
 go get github.com/alexanderthegreat96/libmem-go
 ```
 
-On Windows (no sudo needed):
-```bash
+### Windows Setup
+
+```cmd
+REM 1. Install the setup tool
 go install github.com/alexanderthegreat96/libmem-go/cmd/setup@latest
+
+REM 2. Run setup (installs to %LOCALAPPDATA%\libmem)
 setup
 ```
+
+**Important:** Windows requires environment variables to be set before compiling or running. After setup completes, it will print the exact commands. Copy them to your shell:
+
+**PowerShell:**
+```powershell
+$env:CGO_CFLAGS = '-IC:\Users\<your-username>\AppData\Local\libmem\include'
+$env:CGO_LDFLAGS = '-LC:\Users\<your-username>\AppData\Local\libmem\lib'
+$env:PATH = "$env:PATH;C:\Users\<your-username>\AppData\Local\libmem\lib"
+```
+
+**cmd.exe:**
+```cmd
+set CGO_CFLAGS=-IC:\Users\<your-username>\AppData\Local\libmem\include
+set CGO_LDFLAGS=-LC:\Users\<your-username>\AppData\Local\libmem\lib
+set PATH=%PATH%;C:\Users\<your-username>\AppData\Local\libmem\lib
+```
+
+To make this permanent, add these to your shell profile or user environment variables (System Properties → Environment Variables).
+
+Then test:
+```powershell
+go run .    # Run your Go program
+go build .  # Compile to executable
+```
+
+**Note:** When you compile with `go build`, the resulting `.exe` needs `libmem.dll` at runtime. Either:
+- Keep the DLL on PATH (set above), or
+- Copy `libmem.dll` to the same directory as your `.exe`
 
 To pin a specific libmem version:
 ```bash
@@ -122,6 +154,30 @@ func main() {
     fmt.Printf("Pattern found at: 0x%x\n", addr)
 }
 ```
+## Building for Distribution
+
+When you run `go build`, you get a single `.exe` file. However, the resulting executable is not fully self-contained — it has a runtime dependency on `libmem.dll`.
+
+### Option 1: Ship with DLL (Recommended)
+Bundle `libmem.dll` alongside your `.exe`:
+```
+my-app/
+  ├── my-app.exe
+  └── libmem.dll
+```
+Windows will automatically find the DLL next to your executable.
+
+### Option 2: Add DLL to PATH
+Ensure `C:\Users\<username>\AppData\Local\libmem\lib` is on the system PATH. Users can then run your `.exe` from anywhere.
+
+### Option 3: Embed DLL (Advanced)
+Use a tool like `go-embed` or [`pkger`](https://github.com/markbates/pkger) to embed `libmem.dll` inside your `.exe` and extract it at runtime. This is complex and rarely necessary.
+
+### Troubleshooting "DLL not found"
+If you get `libmem.dll not found` when running your `.exe`:
+1. Check that `libmem.dll` is in the same directory as your `.exe`, or
+2. Verify the DLL's directory is on PATH: `echo %PATH%` (cmd) or `$env:PATH` (PowerShell)
+
 ## Advanced Usage ([tether-go](https://github.com/alexanderthegreat96/tether-go))
 You may use tether-go scaffolding in order to start with something with very little effort. 
 The project has all you need design-pattern wise to implement your features.

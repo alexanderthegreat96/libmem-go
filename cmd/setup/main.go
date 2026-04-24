@@ -32,33 +32,19 @@ const (
 func main() {
 	local := false
 	version := defaultVersion
-	// On Windows the default is static — Go's "one self-contained exe" model
-	// doesn't play well with DLLs (PATH lookups, distribution, etc.). On other
-	// platforms dynamic is the norm (rpath + ldconfig handle it).
-	static := runtime.GOOS == "windows"
 
 	for _, arg := range os.Args[1:] {
-		switch arg {
-		case "--local":
+		if arg == "--local" {
 			local = true
-		case "--static":
-			static = true
-		case "--shared":
-			static = false
-		case "--help", "-h":
+		} else if arg == "--help" || arg == "-h" {
 			printUsage()
 			os.Exit(0)
-		default:
+		} else {
 			version = arg
 		}
 	}
 
-	linkMode := "shared"
-	if static {
-		linkMode = "static"
-	}
-	fmt.Printf("Setting up libmem (%s) for %s/%s (%s)\n\n",
-		version, runtime.GOOS, runtime.GOARCH, linkMode)
+	fmt.Printf("Setting up libmem (%s) for %s/%s\n\n", version, runtime.GOOS, runtime.GOARCH)
 
 	checkPrereqs()
 
@@ -93,9 +79,6 @@ func main() {
 	check(os.MkdirAll(buildDir, 0755), "creating build directory")
 
 	cmakeArgs := []string{"-S", srcDir, "-B", buildDir, "-DLIBMEM_BUILD_TESTS=OFF"}
-	if static {
-		cmakeArgs = append(cmakeArgs, "-DLIBMEM_BUILD_STATIC=ON")
-	}
 	if runtime.GOOS == "windows" {
 		// libmem's PreLoad.cmake forces CMAKE_GENERATOR="NMake Makefiles" on
 		// native Windows, so -G must match. MSVC env is already set up by
@@ -114,7 +97,7 @@ func main() {
 	check(os.MkdirAll(libDir, 0755), "creating lib directory")
 	check(os.MkdirAll(incDir, 0755), "creating include directory")
 
-	if !installLibrary(buildDir, libDir, static) {
+	if !installLibrary(buildDir, libDir) {
 		fatal("could not find built library in %s", buildDir)
 	}
 	installHeaders(filepath.Join(srcDir, "include", "libmem"), incDir)
@@ -124,7 +107,7 @@ func main() {
 	step("Done! libmem installed to %s", installDir)
 
 	// Post-install hints
-	if !local && runtime.GOOS == "linux" && !static {
+	if !local && runtime.GOOS == "linux" {
 		fmt.Println("  You may need to run: sudo ldconfig")
 	}
 	if local {
@@ -132,15 +115,33 @@ func main() {
 	} else {
 		fmt.Println("  You can now use: go get github.com/alexanderthegreat96/libmem-go")
 		if runtime.GOOS == "windows" {
-			fmt.Printf("\n  Set build-time env vars (once per shell, or put in your profile):\n")
-			fmt.Printf("    set CGO_CFLAGS=-I%s\n", filepath.Join(installDir, "include"))
-			fmt.Printf("    set CGO_LDFLAGS=-L%s\n", filepath.Join(installDir, "lib"))
-			if !static {
-				fmt.Printf("    set PATH=%%PATH%%;%s\n", filepath.Join(installDir, "lib"))
-				fmt.Println("  (PATH entry is required so Windows can find libmem.dll at runtime.)")
-			} else {
-				fmt.Println("  No runtime PATH entry needed — libmem is linked into your .exe.")
-			}
+			incPath := filepath.Join(installDir, "include")
+			libPath := filepath.Join(installDir, "lib")
+			fmt.Println()
+			fmt.Println("  ============================================================================")
+			fmt.Println("  WINDOWS: Set these environment variables before building/running:")
+			fmt.Println("  ============================================================================")
+			fmt.Println()
+			fmt.Println("  Choose your shell:")
+			fmt.Println()
+			fmt.Println("  --- PowerShell (Recommended on Windows 11+) ---")
+			fmt.Printf("  $env:CGO_CFLAGS = '-I%s'\n", incPath)
+			fmt.Printf("  $env:CGO_LDFLAGS = '-L%s'\n", libPath)
+			fmt.Printf("  $env:PATH = \"$env:PATH;%s\"\n", libPath)
+			fmt.Println()
+			fmt.Println("  --- cmd.exe ---")
+			fmt.Printf("  set CGO_CFLAGS=-I%s\n", incPath)
+			fmt.Printf("  set CGO_LDFLAGS=-L%s\n", libPath)
+			fmt.Printf("  set PATH=%%PATH%%;%s\n", libPath)
+			fmt.Println()
+			fmt.Println("  After setting these:")
+			fmt.Println("    go run .        # Run your Go program directly")
+			fmt.Println("    go build .      # Compile to .exe (libmem.dll must be on PATH or in .exe dir)")
+			fmt.Println()
+			fmt.Println("  For permanent setup, add to your shell profile:")
+			fmt.Println("    PowerShell:  $PROFILE")
+			fmt.Println("    cmd.exe:     User env vars via System Properties > Environment Variables")
+			fmt.Println("  ============================================================================")
 		}
 	}
 }
@@ -150,8 +151,6 @@ func printUsage() {
 
 Options:
   --local    Install to libmem/deps/ in the current repo (for development)
-  --static   Build libmem as a static library (default on Windows)
-  --shared   Build libmem as a shared library (default elsewhere)
   --help     Show this help
 
 Arguments:
@@ -354,34 +353,24 @@ func findProjectRoot() (string, error) {
 	}
 }
 
-// libFileNames returns the expected library filenames for the current OS and
-// link mode. On Windows, shared mode produces libmem.dll + libmem.lib (import
-// library); static mode produces a single libmem.lib (archive with everything
-// bundled by lib.exe).
-func libFileNames(static bool) []string {
+// libFileNames returns the expected library filenames for the current OS.
+func libFileNames() []string {
 	switch runtime.GOOS {
 	case "darwin":
-		if static {
-			return []string{"liblibmem.a"}
-		}
 		return []string{"liblibmem.dylib"}
 	case "windows":
-		if static {
-			return []string{"libmem.lib"}
-		}
+		// MSVC output: libmem.dll (runtime) + libmem.lib (import library).
+		// libmem does not use a "lib" prefix on Windows.
 		return []string{"libmem.dll", "libmem.lib"}
 	default: // linux, freebsd
-		if static {
-			return []string{"liblibmem.a"}
-		}
 		return []string{"liblibmem.so"}
 	}
 }
 
 // installLibrary searches buildDir for built library files and copies them to destDir.
-func installLibrary(searchDir, destDir string, static bool) bool {
+func installLibrary(searchDir, destDir string) bool {
 	found := false
-	for _, name := range libFileNames(static) {
+	for _, name := range libFileNames() {
 		src := findFile(searchDir, name)
 		if src == "" {
 			fmt.Printf("  Warning: %s not found in build output\n", name)
