@@ -48,6 +48,10 @@ func main() {
 
 	checkPrereqs()
 
+	if runtime.GOOS == "windows" {
+		ensureMSVC()
+	}
+
 	// Decide install location
 	installDir := resolveInstallDir(local)
 	libDir := filepath.Join(installDir, "lib")
@@ -77,16 +81,8 @@ func main() {
 	cmakeArgs := []string{"-S", srcDir, "-B", buildDir, "-DLIBMEM_BUILD_TESTS=OFF"}
 	if runtime.GOOS == "windows" {
 		// libmem's PreLoad.cmake forces CMAKE_GENERATOR="NMake Makefiles" on
-		// native Windows (any non-Linux-host build). It is not possible to
-		// override this with -G — cmake will error with a generator mismatch.
-		// So we match what upstream requires: MSVC + nmake.
-		if _, err := exec.LookPath("nmake"); err != nil {
-			fatal("nmake not found in PATH.\n" +
-				"  libmem on Windows requires the MSVC toolchain (cl.exe + nmake.exe).\n" +
-				"  Open a \"x64 Native Tools Command Prompt for VS\" (or run vcvarsall.bat x64)\n" +
-				"  and re-run this setup. Native MinGW on Windows is not supported upstream.")
-		}
-		fmt.Println("--> Using NMake Makefiles (required by libmem on Windows)")
+		// native Windows, so -G must match. MSVC env is already set up by
+		// ensureMSVC above.
 		cmakeArgs = append(cmakeArgs, "-G", "NMake Makefiles")
 	}
 	runCmake(cmakeArgs...)
@@ -185,6 +181,131 @@ func checkPrereqs() {
 	}
 }
 
+// ensureMSVC makes sure the MSVC toolchain (cl.exe + nmake.exe) is available
+// for cmake. libmem's PreLoad.cmake forces NMake Makefiles on Windows, so MSVC
+// is the only supported toolchain. We try to make this universal: if nmake
+// isn't already on PATH, locate Visual Studio via vswhere.exe and activate
+// vcvarsall.bat in-process so users don't have to open a Developer Command
+// Prompt first.
+func ensureMSVC() {
+	if _, err := exec.LookPath("nmake"); err == nil {
+		return // MSVC env already active
+	}
+
+	vcvars := findVcvarsall()
+	if vcvars == "" {
+		fatal("Visual Studio MSVC toolchain not found.\n" +
+			"  libmem on Windows requires cl.exe + nmake.exe. Install Visual Studio 2019+\n" +
+			"  (any edition) or the standalone Build Tools, with the\n" +
+			"  \"Desktop development with C++\" workload:\n" +
+			"    https://visualstudio.microsoft.com/downloads/\n" +
+			"  Then re-run this setup.")
+	}
+
+	arch := "x64"
+	switch runtime.GOARCH {
+	case "386":
+		arch = "x86"
+	case "arm64":
+		arch = "x64_arm64"
+	}
+
+	step("Activating MSVC environment (%s)", arch)
+	fmt.Printf("  vcvarsall: %s\n", vcvars)
+	applyVcvarsEnv(vcvars, arch)
+
+	if _, err := exec.LookPath("nmake"); err != nil {
+		fatal("MSVC activation completed but nmake is still not on PATH.\n" +
+			"  Your Visual Studio install may be missing the C++ build tools.\n" +
+			"  Open the Visual Studio Installer and add the\n" +
+			"  \"Desktop development with C++\" workload.")
+	}
+}
+
+// findVcvarsall locates vcvarsall.bat by asking vswhere for the latest VS
+// install that has the MSVC x86/x64 compiler component. Falls back to probing
+// standard install paths if vswhere is not present (rare on modern Windows).
+func findVcvarsall() string {
+	pf86 := os.Getenv("ProgramFiles(x86)")
+	if pf86 == "" {
+		pf86 = `C:\Program Files (x86)`
+	}
+	vswhere := filepath.Join(pf86, "Microsoft Visual Studio", "Installer", "vswhere.exe")
+	if _, err := os.Stat(vswhere); err == nil {
+		out, err := exec.Command(vswhere,
+			"-latest",
+			"-products", "*",
+			"-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+			"-property", "installationPath",
+		).Output()
+		if err == nil {
+			installPath := strings.TrimSpace(string(out))
+			if installPath != "" {
+				p := filepath.Join(installPath, "VC", "Auxiliary", "Build", "vcvarsall.bat")
+				if _, err := os.Stat(p); err == nil {
+					return p
+				}
+			}
+		}
+	}
+
+	// Fallback probe — older machines without vswhere.
+	pf := os.Getenv("ProgramFiles")
+	if pf == "" {
+		pf = `C:\Program Files`
+	}
+	for _, root := range []string{pf, pf86} {
+		for _, year := range []string{"2022", "2019", "2017"} {
+			for _, ed := range []string{"Enterprise", "Professional", "Community", "BuildTools"} {
+				p := filepath.Join(root, "Microsoft Visual Studio", year, ed,
+					"VC", "Auxiliary", "Build", "vcvarsall.bat")
+				if _, err := os.Stat(p); err == nil {
+					return p
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// applyVcvarsEnv runs vcvarsall.bat for the given arch in a subshell, captures
+// the resulting environment, and applies it to the current process so all
+// subsequent child processes (cmake, nmake) inherit it.
+//
+// We stage the commands in a temp .bat file to avoid cmd.exe's famously broken
+// nested-quote handling when combined with Go's arg-escaping.
+func applyVcvarsEnv(vcvars, arch string) {
+	const delim = "---LIBMEM-VCVARS-ENV---"
+	bat, err := os.CreateTemp("", "libmem-vcvars-*.bat")
+	check(err, "creating vcvars shim")
+	batPath := bat.Name()
+	defer os.Remove(batPath)
+	_, werr := fmt.Fprintf(bat,
+		"@echo off\r\ncall \"%s\" %s >NUL\r\nif errorlevel 1 exit /b %%errorlevel%%\r\necho %s\r\nset\r\n",
+		vcvars, arch, delim)
+	check(werr, "writing vcvars shim")
+	check(bat.Close(), "closing vcvars shim")
+
+	out, err := exec.Command("cmd.exe", "/c", batPath).Output()
+	if err != nil {
+		fatal("running vcvarsall.bat: %v\n  output: %s", err, string(out))
+	}
+
+	idx := strings.Index(string(out), delim)
+	if idx < 0 {
+		fatal("vcvarsall.bat output missing delimiter (batch likely failed)")
+	}
+	envBlock := string(out)[idx+len(delim):]
+	for _, raw := range strings.Split(envBlock, "\n") {
+		kv := strings.TrimRight(raw, "\r\n ")
+		eq := strings.Index(kv, "=")
+		if eq <= 0 {
+			continue
+		}
+		os.Setenv(kv[:eq], kv[eq+1:])
+	}
+}
+
 // findProjectRoot walks up from cwd looking for go.mod.
 func findProjectRoot() (string, error) {
 	dir, err := os.Getwd()
@@ -209,7 +330,9 @@ func libFileNames() []string {
 	case "darwin":
 		return []string{"liblibmem.dylib"}
 	case "windows":
-		return []string{"liblibmem.dll", "liblibmem.dll.a"}
+		// MSVC output: libmem.dll (runtime) + libmem.lib (import library).
+		// libmem does not use a "lib" prefix on Windows.
+		return []string{"libmem.dll", "libmem.lib"}
 	default: // linux, freebsd
 		return []string{"liblibmem.so"}
 	}
