@@ -76,22 +76,18 @@ func main() {
 
 	cmakeArgs := []string{"-S", srcDir, "-B", buildDir, "-DLIBMEM_BUILD_TESTS=OFF"}
 	if runtime.GOOS == "windows" {
-		// 1. Check if MinGW is available in the current PATH
-		_, errMinGW := exec.LookPath("mingw32-make")
-		if errMinGW == nil {
-			fmt.Println("--> Detected MinGW, using MinGW Makefiles")
-			cmakeArgs = append(cmakeArgs, "-G", "MinGW Makefiles")
-		} else {
-			// 2. Check if NMake (Visual Studio) is available
-			_, errNMake := exec.LookPath("nmake")
-			if errNMake == nil {
-				fmt.Println("--> Detected Visual Studio, using NMake Makefiles")
-				cmakeArgs = append(cmakeArgs, "-G", "NMake Makefiles")
-			} else {
-				// 3. Last Resort: Let CMake try its default "Visual Studio Solution" generator
-				fmt.Println("--> No command-line build tools found, falling back to default generator")
-			}
+		// libmem's PreLoad.cmake forces CMAKE_GENERATOR="NMake Makefiles" on
+		// native Windows (any non-Linux-host build). It is not possible to
+		// override this with -G — cmake will error with a generator mismatch.
+		// So we match what upstream requires: MSVC + nmake.
+		if _, err := exec.LookPath("nmake"); err != nil {
+			fatal("nmake not found in PATH.\n" +
+				"  libmem on Windows requires the MSVC toolchain (cl.exe + nmake.exe).\n" +
+				"  Open a \"x64 Native Tools Command Prompt for VS\" (or run vcvarsall.bat x64)\n" +
+				"  and re-run this setup. Native MinGW on Windows is not supported upstream.")
 		}
+		fmt.Println("--> Using NMake Makefiles (required by libmem on Windows)")
+		cmakeArgs = append(cmakeArgs, "-G", "NMake Makefiles")
 	}
 	runCmake(cmakeArgs...)
 
