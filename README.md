@@ -102,7 +102,7 @@ A `make setup` shorthand is also available on Linux/macOS (runs with `--local`).
 
 The projects below showcase how it can be used.
 
-[God of War 2018 No Clip](https://github.com/alexanderthegreat96/gow-no-clip)
+[God of War (2018) - No Clip](https://github.com/alexanderthegreat96/gow-no-clip)
 
 ## Documentation
 
