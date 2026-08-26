@@ -52,6 +52,7 @@ setup
 **Important:** Windows requires environment variables to be set before compiling or running. After setup completes, it will print the exact commands. Copy them to your shell:
 
 **PowerShell:**
+
 ```powershell
 $env:CGO_CFLAGS = '-IC:\Users\<your-username>\AppData\Local\libmem\include'
 $env:CGO_LDFLAGS = '-LC:\Users\<your-username>\AppData\Local\libmem\lib'
@@ -59,6 +60,7 @@ $env:PATH = "$env:PATH;C:\Users\<your-username>\AppData\Local\libmem\lib"
 ```
 
 **cmd.exe:**
+
 ```cmd
 set CGO_CFLAGS=-IC:\Users\<your-username>\AppData\Local\libmem\include
 set CGO_LDFLAGS=-LC:\Users\<your-username>\AppData\Local\libmem\lib
@@ -68,16 +70,19 @@ set PATH=%PATH%;C:\Users\<your-username>\AppData\Local\libmem\lib
 To make this permanent, add these to your shell profile or user environment variables (System Properties → Environment Variables).
 
 Then test:
+
 ```powershell
 go run .    # Run your Go program
 go build .  # Compile to executable
 ```
 
 **Note:** When you compile with `go build`, the resulting `.exe` needs `libmem.dll` at runtime. Either:
+
 - Keep the DLL on PATH (set above), or
 - Copy `libmem.dll` to the same directory as your `.exe`
 
 To pin a specific libmem version:
+
 ```bash
 sudo "$(go env GOPATH)/bin/setup" v4.5.0
 ```
@@ -92,6 +97,12 @@ go build ./libmem
 ```
 
 A `make setup` shorthand is also available on Linux/macOS (runs with `--local`).
+
+## Projects using libmem-go
+
+The projects below showcase how it can be used.
+
+[God of War 2018 No Clip](https://github.com/alexanderthegreat96/gow-no-clip)
 
 ## Documentation
 
@@ -154,116 +165,125 @@ func main() {
     fmt.Printf("Pattern found at: 0x%x\n", addr)
 }
 ```
+
 ## Building for Distribution
 
 When you run `go build`, you get a single `.exe` file. However, the resulting executable is not fully self-contained — it has a runtime dependency on `libmem.dll`.
 
 ### Option 1: Ship with DLL (Recommended)
+
 Bundle `libmem.dll` alongside your `.exe`:
+
 ```
 my-app/
   ├── my-app.exe
   └── libmem.dll
 ```
+
 Windows will automatically find the DLL next to your executable.
 
 ### Option 2: Add DLL to PATH
+
 Ensure `C:\Users\<username>\AppData\Local\libmem\lib` is on the system PATH. Users can then run your `.exe` from anywhere.
 
 ### Option 3: Embed DLL (Advanced)
+
 Use a tool like `go-embed` or [`pkger`](https://github.com/markbates/pkger) to embed `libmem.dll` inside your `.exe` and extract it at runtime. This is complex and rarely necessary.
 
 ### Troubleshooting "DLL not found"
+
 If you get `libmem.dll not found` when running your `.exe`:
+
 1. Check that `libmem.dll` is in the same directory as your `.exe`, or
 2. Verify the DLL's directory is on PATH: `echo %PATH%` (cmd) or `$env:PATH` (PowerShell)
 
 ## Advanced Usage ([tether-go](https://github.com/alexanderthegreat96/tether-go))
-You may use tether-go scaffolding in order to start with something with very little effort. 
+
+You may use tether-go scaffolding in order to start with something with very little effort.
 The project has all you need design-pattern wise to implement your features.
 
 ## API Overview
 
 ### Process
 
-| Function | Description |
-|---|---|
-| `EnumProcesses()` | List all running processes |
-| `GetProcess()` | Get current process info |
-| `GetProcessEx(pid)` | Get process info by PID |
-| `FindProcess(name)` | Find a process by name |
-| `IsProcessAlive(process)` | Check if a process is running |
-| `GetCommandLine(process)` | Get process command line arguments |
-| `GetBits()` | Get current process bitness (32/64) |
-| `GetSystemBits()` | Get OS bitness (32/64) |
+| Function                  | Description                         |
+| ------------------------- | ----------------------------------- |
+| `EnumProcesses()`         | List all running processes          |
+| `GetProcess()`            | Get current process info            |
+| `GetProcessEx(pid)`       | Get process info by PID             |
+| `FindProcess(name)`       | Find a process by name              |
+| `IsProcessAlive(process)` | Check if a process is running       |
+| `GetCommandLine(process)` | Get process command line arguments  |
+| `GetBits()`               | Get current process bitness (32/64) |
+| `GetSystemBits()`         | Get OS bitness (32/64)              |
 
 ### Thread
 
-| Function | Description |
-|---|---|
-| `EnumThreads()` | List threads in current process |
-| `EnumThreadsEx(process)` | List threads in a remote process |
-| `GetThread()` | Get current thread info |
-| `GetThreadEx(process)` | Get a thread from a remote process |
+| Function                   | Description                        |
+| -------------------------- | ---------------------------------- |
+| `EnumThreads()`            | List threads in current process    |
+| `EnumThreadsEx(process)`   | List threads in a remote process   |
+| `GetThread()`              | Get current thread info            |
+| `GetThreadEx(process)`     | Get a thread from a remote process |
 | `GetThreadProcess(thread)` | Get the owning process of a thread |
 
 ### Module
 
-| Function | Description |
-|---|---|
-| `EnumModules()` / `EnumModulesEx(process)` | List loaded modules |
-| `FindModule(name)` / `FindModuleEx(process, name)` | Find module by name |
-| `LoadModule(path)` / `LoadModuleEx(process, path)` | Load/inject a module |
-| `UnloadModule(module)` / `UnloadModuleEx(process, module)` | Unload a module |
+| Function                                                   | Description          |
+| ---------------------------------------------------------- | -------------------- |
+| `EnumModules()` / `EnumModulesEx(process)`                 | List loaded modules  |
+| `FindModule(name)` / `FindModuleEx(process, name)`         | Find module by name  |
+| `LoadModule(path)` / `LoadModuleEx(process, path)`         | Load/inject a module |
+| `UnloadModule(module)` / `UnloadModuleEx(process, module)` | Unload a module      |
 
 ### Memory
 
-| Function | Description |
-|---|---|
-| `ReadMemory(addr, size)` / `ReadMemoryEx(...)` | Read memory |
-| `WriteMemory(addr, data)` / `WriteMemoryEx(...)` | Write memory |
-| `SetMemory(addr, byte, size)` / `SetMemoryEx(...)` | Fill memory |
-| `ProtMemory(addr, size, prot)` / `ProtMemoryEx(...)` | Change protection |
-| `AllocMemory(size, prot)` / `AllocMemoryEx(...)` | Allocate memory |
-| `FreeMemory(addr, size)` / `FreeMemoryEx(...)` | Free memory |
-| `DeepPointer(base, offsets)` / `DeepPointerEx(...)` | Resolve pointer chains |
+| Function                                             | Description            |
+| ---------------------------------------------------- | ---------------------- |
+| `ReadMemory(addr, size)` / `ReadMemoryEx(...)`       | Read memory            |
+| `WriteMemory(addr, data)` / `WriteMemoryEx(...)`     | Write memory           |
+| `SetMemory(addr, byte, size)` / `SetMemoryEx(...)`   | Fill memory            |
+| `ProtMemory(addr, size, prot)` / `ProtMemoryEx(...)` | Change protection      |
+| `AllocMemory(size, prot)` / `AllocMemoryEx(...)`     | Allocate memory        |
+| `FreeMemory(addr, size)` / `FreeMemoryEx(...)`       | Free memory            |
+| `DeepPointer(base, offsets)` / `DeepPointerEx(...)`  | Resolve pointer chains |
 
 ### Scanning
 
-| Function | Description |
-|---|---|
-| `DataScan(data, addr, size)` / `DataScanEx(...)` | Scan for exact bytes |
+| Function                                                        | Description                                  |
+| --------------------------------------------------------------- | -------------------------------------------- |
+| `DataScan(data, addr, size)` / `DataScanEx(...)`                | Scan for exact bytes                         |
 | `PatternScan(pattern, mask, addr, size)` / `PatternScanEx(...)` | Scan with mask (`x` = match, `?` = wildcard) |
-| `SigScan(sig, addr, size)` / `SigScanEx(...)` | Scan for IDA-style signature |
+| `SigScan(sig, addr, size)` / `SigScanEx(...)`                   | Scan for IDA-style signature                 |
 
 ### Assembly / Disassembly
 
-| Function | Description |
-|---|---|
-| `GetArchitecture()` | Get CPU architecture |
-| `Assemble(code)` | Assemble a single instruction |
-| `AssembleEx(code, arch, addr)` | Assemble for a specific arch/address |
-| `Disassemble(addr)` | Disassemble a single instruction |
-| `DisassembleEx(addr, arch, maxSize, count, runtimeAddr)` | Disassemble multiple instructions |
-| `CodeLength(addr, minLen)` / `CodeLengthEx(...)` | Get instruction-aligned code length |
+| Function                                                 | Description                          |
+| -------------------------------------------------------- | ------------------------------------ |
+| `GetArchitecture()`                                      | Get CPU architecture                 |
+| `Assemble(code)`                                         | Assemble a single instruction        |
+| `AssembleEx(code, arch, addr)`                           | Assemble for a specific arch/address |
+| `Disassemble(addr)`                                      | Disassemble a single instruction     |
+| `DisassembleEx(addr, arch, maxSize, count, runtimeAddr)` | Disassemble multiple instructions    |
+| `CodeLength(addr, minLen)` / `CodeLengthEx(...)`         | Get instruction-aligned code length  |
 
 ### Hooking
 
-| Function | Description |
-|---|---|
-| `HookCode(from, to)` / `HookCodeEx(...)` | Install a function hook |
-| `UnhookCode(from, trampoline, size)` / `UnhookCodeEx(...)` | Remove a function hook |
+| Function                                                   | Description             |
+| ---------------------------------------------------------- | ----------------------- |
+| `HookCode(from, to)` / `HookCodeEx(...)`                   | Install a function hook |
+| `UnhookCode(from, trampoline, size)` / `UnhookCodeEx(...)` | Remove a function hook  |
 
 ### VMT (Virtual Method Table)
 
-| Function | Description |
-|---|---|
-| `NewVMT(vtable)` | Create a VMT hook manager |
-| `vmt.Hook(index, to)` | Hook a virtual function |
-| `vmt.Unhook(index)` | Restore original virtual function |
-| `vmt.GetOriginal(index)` | Get original function address |
-| `vmt.Reset()` | Restore all virtual functions |
-| `vmt.Free()` | Release VMT resources |
+| Function                 | Description                       |
+| ------------------------ | --------------------------------- |
+| `NewVMT(vtable)`         | Create a VMT hook manager         |
+| `vmt.Hook(index, to)`    | Hook a virtual function           |
+| `vmt.Unhook(index)`      | Restore original virtual function |
+| `vmt.GetOriginal(index)` | Get original function address     |
+| `vmt.Reset()`            | Restore all virtual functions     |
+| `vmt.Free()`             | Release VMT resources             |
 
 ## Alternative Setup
 
